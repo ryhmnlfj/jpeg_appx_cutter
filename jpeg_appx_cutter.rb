@@ -12,61 +12,55 @@ class JpegSegment
         @raw_length = 0
     end
 
+    def print_and_update_marker_type(markerTypeString, twoBytesHexString)
+        puts "found #{markerTypeString} (0x#{twoBytesHexString})"
+        @marker_hex_str = twoBytesHexString
+    end
+
     def is_marker_with_length(twoBytesHexString)
         case twoBytesHexString
         when /^FFC/
             if twoBytesHexString == "FFC4"
-                puts "found DHT (0x#{twoBytesHexString})"
+                print_and_update_marker_type("DHT", twoBytesHexString)
             else
-                puts "found SOF (0x#{twoBytesHexString})"
+                print_and_update_marker_type("SOF", twoBytesHexString)
             end
-            @marker_hex_str = twoBytesHexString
             return true
         when /^FFD/ 
             case twoBytesHexString
             when "FFD8"
-                puts "found SOI (0x#{twoBytesHexString})"
+                print_and_update_marker_type("SOI", twoBytesHexString)
                 puts "no length field"
-                @marker_hex_str = twoBytesHexString
                 return false
             when "FFD9"
-                puts "found EOI (0x#{twoBytesHexString})"
+                print_and_update_marker_type("EOI", twoBytesHexString)
                 puts "no length field"
-                @marker_hex_str = twoBytesHexString
                 return false
             when "FFDA"
-                puts "found SOS (0x#{twoBytesHexString})"
-                @marker_hex_str = twoBytesHexString
+                print_and_update_marker_type("SOS", twoBytesHexString)
                 return true
             when "FFDB"
-                puts "found DQT (0x#{twoBytesHexString})"
-                @marker_hex_str = twoBytesHexString
+                print_and_update_marker_type("DQT", twoBytesHexString)
                 return true
             when "FFDC"
-                puts "found DNL (0x#{twoBytesHexString})"
-                @marker_hex_str = twoBytesHexString
+                print_and_update_marker_type("DNL", twoBytesHexString)
                 return true
             when "FFDD"
-                puts "found DRI (0x#{twoBytesHexString})"
-                @marker_hex_str = twoBytesHexString
+                print_and_update_marker_type("DRI", twoBytesHexString)
                 return true
             else ## 0xFFD0..0xFFD7
-                puts "found RST (0x#{twoBytesHexString})"
+                print_and_update_marker_type("RST", twoBytesHexString)
                 puts "no length field"
-                @marker_hex_str = twoBytesHexString
                 return false
             end
         when /^FFE/
-            puts "found APP (0x#{twoBytesHexString})"
-            @marker_hex_str = twoBytesHexString
+            print_and_update_marker_type("APP", twoBytesHexString)
             return true
         when "FFFE"
-            puts "found COM (0x#{twoBytesHexString})"
-            @marker_hex_str = twoBytesHexString
+            print_and_update_marker_type("COM", twoBytesHexString)
             return true
         else
-            puts "found other marker or data (0x#{twoBytesHexString})"
-            @marker_hex_str = twoBytesHexString
+            print_and_update_marker_type("other marker or data", twoBytesHexString)
             return false
         end
         return false
@@ -115,7 +109,7 @@ def debug_print_segment_array(segArray)
 end
 
 def print_usage()
-    puts "usage: $./this_script.rb <input_jpeg> [-o <output_jpeg>]"
+    puts "usage: $#{$PROGRAM_NAME} <input_jpeg> [-o <output_jpeg>]"
 end
 
 ################
@@ -131,7 +125,7 @@ if ARGV.length == 1
     OUTPUT_JPEG_PATH = nil
 end
 if ARGV.length == 3
-    puts "analyzing and cutting APP markers"
+    puts "analyzing and cutting APP markers/segments"
     INPUT_JPEG_PATH = ARGV[0]
     if ARGV[1] != "-o"
         print_usage()
@@ -158,7 +152,7 @@ File.open(INPUT_JPEG_PATH, "r") do |input_jpeg_file|
         File.open(OUTPUT_JPEG_PATH, "w") do |output_jpeg_file|
             segment_array.each do |segment|
                 if segment.marker_hex_str =~ /^FFE/
-                    puts "skipping APP marker (#{segment.marker_hex_str}) and segment"
+                    puts "skipping APP marker/segment (#{segment.marker_hex_str})"
                     input_jpeg_file.seek(segment.raw_length, IO::SEEK_CUR)
                 else
                     puts "writing segment..."
