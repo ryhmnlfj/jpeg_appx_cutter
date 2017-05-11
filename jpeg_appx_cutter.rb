@@ -12,69 +12,68 @@ class JpegSegment
         @raw_length = 0
     end
 
-    def print_and_update_marker_type(markerTypeString, twoBytesHexString)
-        puts "found #{markerTypeString} (0x#{twoBytesHexString})"
-        @marker_hex_str = twoBytesHexString
+    def print_and_update_marker_type(markerTypeString, twoBytesInteger)
+        @marker_hex_str = twoBytesInteger.to_s(16).upcase
+        puts "found #{markerTypeString} (0x#{@marker_hex_str})"
     end
 
-    def is_marker_with_length(twoBytesHexString)
-        case twoBytesHexString
-        when /^FFC/
-            if twoBytesHexString == "FFC4"
-                print_and_update_marker_type("DHT", twoBytesHexString)
-            else
-                print_and_update_marker_type("SOF", twoBytesHexString)
-            end
+    def is_marker_with_length(twoBytesInteger)
+        case twoBytesInteger
+        ## 0xFFC
+        when 0xFFC0..0xFFC3, 0xFFC5..0xFFC7, 0xFFC9..0xFFCB, 0xFFCD..0xFFCF
+            print_and_update_marker_type("SOF", twoBytesInteger)
             return true
-        when /^FFD/ 
-            case twoBytesHexString
-            when "FFD8"
-                print_and_update_marker_type("SOI", twoBytesHexString)
-                puts "no length field"
-                return false
-            when "FFD9"
-                print_and_update_marker_type("EOI", twoBytesHexString)
-                puts "no length field"
-                return false
-            when "FFDA"
-                print_and_update_marker_type("SOS", twoBytesHexString)
-                return true
-            when "FFDB"
-                print_and_update_marker_type("DQT", twoBytesHexString)
-                return true
-            when "FFDC"
-                print_and_update_marker_type("DNL", twoBytesHexString)
-                return true
-            when "FFDD"
-                print_and_update_marker_type("DRI", twoBytesHexString)
-                return true
-            else ## 0xFFD0..0xFFD7
-                print_and_update_marker_type("RST", twoBytesHexString)
-                puts "no length field"
-                return false
-            end
-        when /^FFE/
-            print_and_update_marker_type("APP", twoBytesHexString)
+        when 0xFFC4
+            print_and_update_marker_type("DHT", twoBytesInteger)
             return true
+        ## 0xFFD
+        when 0xFFD0..0xFFD7
+            print_and_update_marker_type("RST", twoBytesInteger)
+            puts "no length field"
+            return false
+        when 0xFFD8
+            print_and_update_marker_type("SOI", twoBytesInteger)
+            puts "no length field"
+            return false
+        when 0xFFD9
+            print_and_update_marker_type("EOI", twoBytesInteger)
+            puts "no length field"
+            return false
+        when 0xFFDA
+            print_and_update_marker_type("SOS", twoBytesInteger)
+            return true
+        when 0xFFDB
+            print_and_update_marker_type("DQT", twoBytesInteger)
+            return true
+        when 0xFFDC
+            print_and_update_marker_type("DNL", twoBytesInteger)
+            return true
+        when 0xFFDD
+            print_and_update_marker_type("DRI", twoBytesInteger)
+            return true
+        ## 0xFFE
+        when 0xFFE0..0xFFEF
+            print_and_update_marker_type("APP", twoBytesInteger)
+            return true
+        ## 0xFFF
         when "FFFE"
-            print_and_update_marker_type("COM", twoBytesHexString)
+            print_and_update_marker_type("COM", twoBytesInteger)
             return true
+        ## others
         else
-            print_and_update_marker_type("other marker or data", twoBytesHexString)
+            print_and_update_marker_type("other marker or data", twoBytesInteger)
             return false
         end
         return false
     end
 
     def read_segment(jpegFile)
-        byte = jpegFile.read(1)
-        byte_hex_str = byte.unpack("H*").pop.upcase
-        if byte_hex_str == "FF"
+        byte_integer = jpegFile.read(1).unpack("C").pop
+        if byte_integer == 0xFF
             @is_image_data =  false
-            next_byte = jpegFile.read(1)
-            next_byte_hex_str = next_byte.unpack("H*").pop.upcase
-            two_bytes_hex_str = byte_hex_str + next_byte_hex_str
-            if is_marker_with_length(two_bytes_hex_str) == true
+            next_byte_integer = jpegFile.read(1).unpack("C").pop
+            two_bytes_integer = (byte_integer << 8) + next_byte_integer
+            if is_marker_with_length(two_bytes_integer) == true
                 @segment_length = jpegFile.read(2).unpack("n").pop
                 puts "Segment Length: #{@segment_length}"
                 skipped = jpegFile.read(@segment_length - 2)
@@ -87,9 +86,8 @@ class JpegSegment
             @is_image_data = true
             @raw_length = 1
             ## read until next 0xFF
-            while byte_hex_str != "FF"
-                byte = jpegFile.read(1)
-                byte_hex_str = byte.unpack("H*").pop.upcase
+            while byte_integer != 0xFF
+                byte_integer = jpegFile.read(1).unpack("C").pop
                 @raw_length += 1
             end
             ## seek 1-byte backward
