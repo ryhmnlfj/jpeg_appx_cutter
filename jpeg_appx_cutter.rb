@@ -56,7 +56,7 @@ class JpegSegment
             print_and_update_marker_type("APP", twoBytesInteger)
             return true
         ## 0xFFF
-        when "FFFE"
+        when 0xFFFE
             print_and_update_marker_type("COM", twoBytesInteger)
             return true
         ## others
@@ -65,6 +65,15 @@ class JpegSegment
             return false
         end
         return false
+    end
+
+    def seek_one_byte_backward(jpegFile)
+        ## seek 1-byte backward
+        if jpegFile.seek(-1, IO::SEEK_CUR) == 0
+            @raw_length -= 1
+        else
+            puts "WARNING: seek error"
+        end
     end
 
     def read_segment(jpegFile)
@@ -79,22 +88,26 @@ class JpegSegment
                 skipped = jpegFile.read(@segment_length - 2)
                 @raw_length = @segment_length + 2
             else
-                ## marker bytes only or NOT marker
-                @raw_length = 2
+                if two_bytes_integer == 0xFFFF
+                    puts "found continuous 0xFF"
+                    @raw_length = 2
+                    seek_one_byte_backward(jpegFile)
+                else
+                    ## marker bytes only or NOT marker
+                    @raw_length = 2
+                end
             end
         else
             @is_image_data = true
             @raw_length = 1
             ## read until next 0xFF
-            while byte_integer != 0xFF
+            while byte_integer != 0xFF && jpegFile.eof? == false
                 byte_integer = jpegFile.read(1).unpack("C").pop
                 @raw_length += 1
             end
-            ## seek 1-byte backward
-            if jpegFile.seek(-1, IO::SEEK_CUR) == 0
-                @raw_length -= 1
-            else
-                puts "WARNING: seek error"
+            ## found next 0xFF
+            if byte_integer == 0xFF
+                seek_one_byte_backward(jpegFile)
             end
         end
     end
