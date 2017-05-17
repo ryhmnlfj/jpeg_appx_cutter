@@ -1,69 +1,141 @@
 #! /usr/bin/ruby
 
-class JpegSegment
+class JpegMarkerInfo
+    attr_accessor :marker_type,
+                  :with_length
+    def initialize(markerTypeString, withLength)
+        @marker_type = markerTypeString
+        @with_length = withLength
+    end
+end
+
+MARKER_INFO_TABLE = {
+    ## 0xFFC
+    0xFFC0 => JpegMarkerInfo.new("SOF0", true),
+    0xFFC1 => JpegMarkerInfo.new("SOF1", true),
+    0xFFC2 => JpegMarkerInfo.new("SOF2", true),
+    0xFFC3 => JpegMarkerInfo.new("SOF3", true),
+    0xFFC4 => JpegMarkerInfo.new("DHT", true),
+    0xFFC5 => JpegMarkerInfo.new("SOF5", true),
+    0xFFC6 => JpegMarkerInfo.new("SOF6", true),
+    0xFFC7 => JpegMarkerInfo.new("SOF7", true),
+
+    0xFFC9 => JpegMarkerInfo.new("SOF9", true),
+    0xFFCA => JpegMarkerInfo.new("SOF10", true),
+    0xFFCB => JpegMarkerInfo.new("SOF11", true),
+
+    0xFFCD => JpegMarkerInfo.new("SOF13", true),
+    0xFFCE => JpegMarkerInfo.new("SOF14", true),
+    0xFFCF => JpegMarkerInfo.new("SOF15", true),
+    ## 0xFFD
+    0xFFD0 => JpegMarkerInfo.new("RST0", false),
+    0xFFD1 => JpegMarkerInfo.new("RST1", false),
+    0xFFD2 => JpegMarkerInfo.new("RST2", false),
+    0xFFD3 => JpegMarkerInfo.new("RST3", false),
+    0xFFD4 => JpegMarkerInfo.new("RST4", false),
+    0xFFD5 => JpegMarkerInfo.new("RST5", false),
+    0xFFD6 => JpegMarkerInfo.new("RST6", false),
+    0xFFD7 => JpegMarkerInfo.new("RST7", false),
+    0xFFD8 => JpegMarkerInfo.new("SOI", false),
+    0xFFD9 => JpegMarkerInfo.new("EOI", false),
+    0xFFDA => JpegMarkerInfo.new("SOS", true),
+    0xFFDB => JpegMarkerInfo.new("DQT", true),
+    0xFFDC => JpegMarkerInfo.new("DNL", true),
+    0xFFDD => JpegMarkerInfo.new("DRI", true),
+    ## 0xFFE
+    0xFFE0 => JpegMarkerInfo.new("APP0", true),
+    0xFFE1 => JpegMarkerInfo.new("APP1", true),
+    0xFFE2 => JpegMarkerInfo.new("APP2", true),
+    0xFFE3 => JpegMarkerInfo.new("APP3", true),
+    0xFFE4 => JpegMarkerInfo.new("APP4", true),
+    0xFFE5 => JpegMarkerInfo.new("APP5", true),
+    0xFFE6 => JpegMarkerInfo.new("APP6", true),
+    0xFFE7 => JpegMarkerInfo.new("APP7", true),
+    0xFFE8 => JpegMarkerInfo.new("APP8", true),
+    0xFFE9 => JpegMarkerInfo.new("APP9", true),
+    0xFFEA => JpegMarkerInfo.new("APP10", true),
+    0xFFEB => JpegMarkerInfo.new("APP11", true),
+    0xFFEC => JpegMarkerInfo.new("APP12", true),
+    0xFFED => JpegMarkerInfo.new("APP13", true),
+    0xFFEE => JpegMarkerInfo.new("APP14", true),
+    0xFFEF => JpegMarkerInfo.new("APP15", true),
+    ## 0xFFF
+    0xFFFE => JpegMarkerInfo.new("COM", true)
+}
+
+class JpegHandler
+    attr_accessor :input_jpeg_path,
+                  :output_jpeg_path,
+                  :segment_info_array
+    def initialize(inputJpegPath, outputJpegPath)
+        @input_jpeg_path = inputJpegPath
+        @output_jpeg_path = outputJpegPath
+    end
+
+    def read_jpeg()
+        ## reading and analyzing process
+        File.open(@input_jpeg_path, "r") do |input_jpeg_file|
+            @segment_info_array = Array.new
+            while input_jpeg_file.eof? == false
+                segment_info = JpegSegmentInfo.new
+                segment_info.read_segment(input_jpeg_file)
+                @segment_info_array << segment_info
+            end
+            #debug_print_segment_array(segment_array)
+        end
+    end
+
+    def write_jpeg()
+        if @output_jpeg_path == nil
+            puts "NO output JPEG file path"
+            return
+        end
+        ## writing process
+        File.open(@input_jpeg_path, "r") do |input_jpeg_file|
+            File.open(@output_jpeg_path, "w") do |output_jpeg_file|
+                @segment_info_array.each do |segment_info|
+                    current_marker_info = segment_info.marker_info
+                    if current_marker_info != nil && current_marker_info.marker_type =~ /^APP/
+                        puts "skipping APP marker/segment (#{current_marker_info.marker_type})"
+                        input_jpeg_file.seek(segment_info.raw_length, IO::SEEK_CUR)
+                    else
+                        puts "writing segment..."
+                        output_jpeg_file.write( input_jpeg_file.read(segment_info.raw_length) )
+                    end
+                end
+            end
+        end
+    end
+end
+
+class JpegSegmentInfo
     attr_accessor :is_image_data,
-                  :marker_hex_str,
+                  :marker_info,
                   :segment_length,
                   :raw_length
     def initialize()
         @is_image_data = false
-        @marker_hex_str = nil
+        @marker_info = nil
         @segment_length = 0
         @raw_length = 0
     end
 
-    def print_and_update_marker_type(markerTypeString, twoBytesInteger)
-        @marker_hex_str = twoBytesInteger.to_s(16).upcase
-        puts "found #{markerTypeString} (0x#{@marker_hex_str})"
+    def print_marker_type(markerTypeString, twoBytesInteger)
+        marker_hex_str = twoBytesInteger.to_s(16).upcase
+        puts "found #{markerTypeString} (0x#{marker_hex_str})"
     end
 
     def is_marker_with_length(twoBytesInteger)
-        case twoBytesInteger
-        ## 0xFFC
-        when 0xFFC0..0xFFC3, 0xFFC5..0xFFC7, 0xFFC9..0xFFCB, 0xFFCD..0xFFCF
-            print_and_update_marker_type("SOF", twoBytesInteger)
-            return true
-        when 0xFFC4
-            print_and_update_marker_type("DHT", twoBytesInteger)
-            return true
-        ## 0xFFD
-        when 0xFFD0..0xFFD7
-            print_and_update_marker_type("RST", twoBytesInteger)
-            puts "no length field"
-            return false
-        when 0xFFD8
-            print_and_update_marker_type("SOI", twoBytesInteger)
-            puts "no length field"
-            return false
-        when 0xFFD9
-            print_and_update_marker_type("EOI", twoBytesInteger)
-            puts "no length field"
-            return false
-        when 0xFFDA
-            print_and_update_marker_type("SOS", twoBytesInteger)
-            return true
-        when 0xFFDB
-            print_and_update_marker_type("DQT", twoBytesInteger)
-            return true
-        when 0xFFDC
-            print_and_update_marker_type("DNL", twoBytesInteger)
-            return true
-        when 0xFFDD
-            print_and_update_marker_type("DRI", twoBytesInteger)
-            return true
-        ## 0xFFE
-        when 0xFFE0..0xFFEF
-            print_and_update_marker_type("APP", twoBytesInteger)
-            return true
-        ## 0xFFF
-        when 0xFFFE
-            print_and_update_marker_type("COM", twoBytesInteger)
-            return true
-        ## others
+        @marker_info = MARKER_INFO_TABLE[twoBytesInteger]
+
+        if @marker_info != nil
+            print_marker_type(@marker_info.marker_type, twoBytesInteger)
+            return @marker_info.with_length
         else
-            print_and_update_marker_type("other marker or data", twoBytesInteger)
+            print_marker_type("other marker or data", twoBytesInteger)
             return false
         end
+
         return false
     end
 
@@ -145,32 +217,7 @@ if ARGV.length == 3
     OUTPUT_JPEG_PATH = ARGV[2]
 end
 
-File.open(INPUT_JPEG_PATH, "r") do |input_jpeg_file|
-    ## reading and analyzing process
-    segment_array = Array.new
-    while input_jpeg_file.eof? == false
-        segment = JpegSegment.new
-        segment.read_segment(input_jpeg_file)
-        segment_array << segment
-    end
-    #debug_print_segment_array(segment_array)
-
-    ## writing process
-    if OUTPUT_JPEG_PATH != nil
-        if input_jpeg_file.seek(0, IO::SEEK_SET) != 0
-            puts "WARNING: seek error"
-        end
-        File.open(OUTPUT_JPEG_PATH, "w") do |output_jpeg_file|
-            segment_array.each do |segment|
-                if segment.marker_hex_str =~ /^FFE/
-                    puts "skipping APP marker/segment (#{segment.marker_hex_str})"
-                    input_jpeg_file.seek(segment.raw_length, IO::SEEK_CUR)
-                else
-                    puts "writing segment..."
-                    output_jpeg_file.write( input_jpeg_file.read(segment.raw_length) )
-                end
-            end
-        end
-    end
-end
+jpeg_handler = JpegHandler.new(INPUT_JPEG_PATH, OUTPUT_JPEG_PATH)
+jpeg_handler.read_jpeg()
+jpeg_handler.write_jpeg()
 
