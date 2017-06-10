@@ -72,6 +72,37 @@ class JpegHandler
         @output_jpeg_path = outputJpegPath
     end
 
+    def is_jpeg(resolveWithSecondMarker = false)
+        ret = false
+        File.open(@input_jpeg_path, "r") do |input_jpeg_file|
+            first_segment_info = JpegSegmentInfo.new
+            first_segment_info.read_segment(input_jpeg_file)
+            first_marker_info = first_segment_info.marker_info
+            if first_marker_info != nil && first_marker_info.marker_type == "SOI"
+                ret = true
+            else
+                ret = false
+            end
+            ## optionally check 2nd marker
+            if resolveWithSecondMarker == true
+                second_segment_info = JpegSegmentInfo.new
+                second_segment_info.read_segment(input_jpeg_file)
+                if second_segment_info.is_image_data == false
+                    ret = true
+                else
+                    ret = false
+                end
+            end
+        end
+
+        if ret == true
+            puts "This binary file is jpeg."
+        else
+            puts "This file is NOT jpeg."
+        end
+        return ret
+    end
+
     def read_jpeg()
         ## reading and analyzing process
         File.open(@input_jpeg_path, "r") do |input_jpeg_file|
@@ -141,16 +172,16 @@ class JpegSegmentInfo
 
     def seek_one_byte_backward(jpegFile)
         ## seek 1-byte backward
-        if jpegFile.seek(-1, IO::SEEK_CUR) == 0
+        if jpegFile.seek(-1, IO::SEEK_CUR) == 0 ## TODO: eof check 
             @raw_length -= 1
         else
             puts "WARNING: seek error"
         end
     end
 
-    def read_segment(jpegFile)
+    def read_segment(jpegFile) ## TODO: modify reading process, should use stack
         byte_integer = jpegFile.read(1).unpack("C").pop
-        if byte_integer == 0xFF
+        if byte_integer == 0xFF ## TODO: && jpegFile.eof? == false (for 0xFF-bytes at EOF)
             @is_image_data =  false
             next_byte_integer = jpegFile.read(1).unpack("C").pop
             two_bytes_integer = (byte_integer << 8) + next_byte_integer
@@ -162,7 +193,7 @@ class JpegSegmentInfo
             else
                 if two_bytes_integer == 0xFFFF
                     puts "found continuous 0xFF"
-                    @raw_length = 2
+                    @raw_length = 2 ## TODO: raw_length = 1 due to 1-byte backward seeking
                     seek_one_byte_backward(jpegFile)
                 else
                     ## marker bytes only or NOT marker
@@ -218,6 +249,8 @@ if ARGV.length == 3
 end
 
 jpeg_handler = JpegHandler.new(INPUT_JPEG_PATH, OUTPUT_JPEG_PATH)
-jpeg_handler.read_jpeg()
-jpeg_handler.write_jpeg()
+if jpeg_handler.is_jpeg() == true
+    jpeg_handler.read_jpeg()
+    jpeg_handler.write_jpeg()
+end
 
