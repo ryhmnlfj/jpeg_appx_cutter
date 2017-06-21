@@ -172,7 +172,7 @@ class JpegSegmentInfo
 
     def seek_one_byte_backward(jpegFile)
         ## seek 1-byte backward
-        if jpegFile.seek(-1, IO::SEEK_CUR) == 0 ## TODO: eof check 
+        if jpegFile.seek(-1, IO::SEEK_CUR) == 0 
             @raw_length -= 1
         else
             puts "WARNING: seek error"
@@ -181,7 +181,7 @@ class JpegSegmentInfo
 
     def read_segment(jpegFile) ## TODO: modify reading process, should use stack
         byte_integer = jpegFile.read(1).unpack("C").pop
-        if byte_integer == 0xFF ## TODO: && jpegFile.eof? == false (for 0xFF-bytes at EOF)
+        if byte_integer == 0xFF && jpegFile.eof? == false
             @is_image_data =  false
             next_byte_integer = jpegFile.read(1).unpack("C").pop
             two_bytes_integer = (byte_integer << 8) + next_byte_integer
@@ -193,7 +193,7 @@ class JpegSegmentInfo
             else
                 if two_bytes_integer == 0xFFFF
                     puts "found continuous 0xFF"
-                    @raw_length = 2 ## TODO: raw_length = 1 due to 1-byte backward seeking
+                    @raw_length = 1
                     seek_one_byte_backward(jpegFile)
                 else
                     ## marker bytes only or NOT marker
@@ -209,7 +209,7 @@ class JpegSegmentInfo
                 @raw_length += 1
             end
             ## found next 0xFF
-            if byte_integer == 0xFF
+            if byte_integer == 0xFF && jpegFile.eof? == false
                 seek_one_byte_backward(jpegFile)
             end
         end
