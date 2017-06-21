@@ -140,15 +140,17 @@ class JpegHandler
 end
 
 class JpegSegmentInfo
-    attr_accessor :is_image_data,
+    attr_accessor :is_image_data, ## TODO: should change to is_marker_segment
                   :marker_info,
                   :segment_length,
-                  :raw_length
+                  :raw_length,
+                  :reading_stack
     def initialize()
         @is_image_data = false
         @marker_info = nil
         @segment_length = 0
         @raw_length = 0
+        @reading_stack = Array.new
     end
 
     def print_marker_type(markerTypeString, twoBytesInteger)
@@ -174,35 +176,43 @@ class JpegSegmentInfo
         ## seek 1-byte backward
         if jpegFile.seek(-1, IO::SEEK_CUR) == 0 
             @raw_length -= 1
+            #puts "seek 1-byte backward"
         else
             puts "WARNING: seek error"
         end
     end
 
-    def read_segment(jpegFile) ## TODO: modify reading process, should use stack
+    def read_segment(jpegFile)
         byte_integer = jpegFile.read(1).unpack("C").pop
+        @raw_length += 1
         if byte_integer == 0xFF && jpegFile.eof? == false
-            @is_image_data =  false
+            @reading_stack << byte_integer
+            @is_image_data = false
+            ## skip continuous 0xFF
             next_byte_integer = jpegFile.read(1).unpack("C").pop
-            two_bytes_integer = (byte_integer << 8) + next_byte_integer
+            @raw_length += 1
+            @reading_stack << next_byte_integer
+            while next_byte_integer == 0xFF && jpegFile.eof? == false
+                puts "found continuous 0xFF"
+                next_byte_integer = jpegFile.read(1).unpack("C").pop
+                @reading_stack << next_byte_integer
+                @raw_length += 1
+            end
+            ## handle last 2-byte as marker 
+            second_byte_integer = @reading_stack.pop
+            first_byte_integer = @reading_stack.pop
+            two_bytes_integer = (first_byte_integer << 8) + second_byte_integer
             if is_marker_with_length(two_bytes_integer) == true
                 @segment_length = jpegFile.read(2).unpack("n").pop
                 puts "Segment Length: #{@segment_length}"
                 skipped = jpegFile.read(@segment_length - 2)
-                @raw_length = @segment_length + 2
+                @raw_length += @segment_length
             else
-                if two_bytes_integer == 0xFFFF
-                    puts "found continuous 0xFF"
-                    @raw_length = 1
-                    seek_one_byte_backward(jpegFile)
-                else
-                    ## marker bytes only or NOT marker
-                    @raw_length = 2
-                end
+                ## marker bytes only or NOT marker
+                #puts "This segment has no length field."
             end
         else
             @is_image_data = true
-            @raw_length = 1
             ## read until next 0xFF
             while byte_integer != 0xFF && jpegFile.eof? == false
                 byte_integer = jpegFile.read(1).unpack("C").pop
